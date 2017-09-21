@@ -25,7 +25,7 @@ import categorization.TestEssayRecord;
  * @author Administrator
  * 
  */
-public class ClassificationBayes {
+public class ClassificationBayes_rt {
 	
 	List<TestEssayRecord> testList = new ArrayList<TestEssayRecord>(); // 存放所有的测试集最后的结果；
 	
@@ -33,7 +33,9 @@ public class ClassificationBayes {
 	int type = 0;//类别
 	int termNum = 0;//.data文件中每个特征词的编号
 	int labelSum;//总类别数
+	int totalDocNum = 0; //总文档数
 	
+	int[] docNum = null; //每个类中的文档数
 	int[] eachTermTotal = null; // 每个类的总的特征词数；
 	int[] eachTermFreqTotal = null; // 每个类的总的特征词频数；
 
@@ -57,6 +59,7 @@ public class ClassificationBayes {
 			labelSum = line.split(",").length;//共有多少个类别
 			eachTermTotal = new int[labelSum];//每个类中的总的特征词数，即总词数
 			eachTermFreqTotal = new int[labelSum];//每个类中特征词的总的出现的次数，即总频数
+			docNum = new int[labelSum]; //每个类中的文档数
 
 			int start = 0, end = 0, type;
 			String[] lineSplit;
@@ -69,6 +72,8 @@ public class ClassificationBayes {
 						.substring(start + 1, end));//每个类中的总的特征词数，即总词数
 				eachTermFreqTotal[type] = Integer.parseInt(lineSplit[1].trim()
 						.substring(end + 1));//每个类中特征词的总的出现的次数，即总频数
+				docNum[type] = Integer.parseInt(lineSplit[1].trim()
+						.substring(0, start)); //每个类中的文档数
 			}
 			
 			
@@ -135,6 +140,7 @@ public class ClassificationBayes {
 		double[] probC = new double[this.labelSum];
 
 		for (int i = 0; i < this.labelSum; i++) {
+			totalDocNum += this.docNum[i]; //文本集中总的文档数
 			totalTermFreq += this.eachTermFreqTotal[i];//文本集中总的特征词频
 			probC[i] = (double) eachTermTotal[i] / this.totalTerm;//每个类中的特征词数除以总的特征词数
 		}
@@ -149,7 +155,7 @@ public class ClassificationBayes {
 		String testFileName = testFile.getName();
 		String mapFileName = testFileName.substring(0,testFileName.indexOf(".")) +"." + Parameter.mapSuff;
 		File mapFile = new File(testFile.getParent(),mapFileName);
-		ClassificationBayes by = new ClassificationBayes();
+		ClassificationBayes_rt by = new ClassificationBayes_rt();
 		totalTermNum = by.getTotalTerm(mapFile);
 		
 		try {
@@ -198,43 +204,67 @@ public class ClassificationBayes {
 				type = Integer.parseInt(labelString.toString());//类别信息
 				lineNum++;
 				TestEssayRecord te = new TestEssayRecord(lineNum, type);//记录文章和类别
-
-				int bayesType = 0;
-				double eachProb = 0;
-				double maxProb = 0;
-				int testTermNum = 0;
 				
+				int bayesType = 0;
+				double[] eachProb = null;
+				double maxProb = 0,con1 = 0.0,con2 = 0.0,pk = 0.,c1 = 0.,c2=0.,resultProb = 0.0;
+				int testTermNum = 0;
 				double eachNum = 0;
 				
-				for (int i = 0; i < this.labelSum; i++) {//i为类别
-					eachProb = probC[i];
+				eachProb = new double[this.labelSum];
+				con1 = Math.log(probC[0]/probC[1]); 
+						
+				for (int i = 0; i < this.labelSum; i++) {
 					for (int j = 1; j < lineSplit.length; j++) {
-						String termStr = lineSplit[j].trim().split(":", 2)[0];
+						String termStr = lineSplit[j].trim().split(":",2)[0];
 						testTermNum = Integer.parseInt(termStr);
 						eachNum = this.term[testTermNum][i];
-						
-						// 平滑系数是在这个地方设置的； 这里的100是用来将数字扩大，
-						eachProb *= (double) (eachNum + 1) * 0.1
-								/ (eachtermNum[i] + this.totalTerm) / 0.1
-								* adjustmentFactor;
+						c1 = (double)(eachNum + 1)/eachtermNum[0];
+						c2 = (double)(eachNum + 1)/eachtermNum[1];
+						con2 += Math.log((1-c1)/(1-c2)); 
+						pk = (double)(eachNum + 1)/eachtermNum[i];
+						eachProb[i] += (eachNum + 1)*Math.log(pk/(1-pk));
 					}
-					
-					if (eachProb > maxProb) {
-						maxProb = eachProb;
-						bayesType = i;
-					}
-
 				}
-
-				if (maxProb == 0) {
-					System.err.println("最大值为0，无法判断!");
-				} else if (Double.isInfinite(maxProb)) {
-					System.err.println("最大值为无穷大，无法判断!");
-				} else {
-					// System.out.println("文章编号："+lineNum+", 分类结果:"+bayesType +
-					// " 最大的值:"+maxProb);
+				
+				resultProb = eachProb[0] - eachProb[1] + con1 + con2;
+				
+				if (resultProb <= 0) {
 					System.out.println("文章编号：" + lineNum);
-				}
+					bayesType = 0;
+				}else {
+					System.out.println("文章编号：" + lineNum);
+					bayesType = 1;
+				}														
+//				for (int i = 0; i < this.labelSum; i++) {//i为类别
+//					eachProb = probC[i];
+//				for (int j = 1; j < lineSplit.length; j++) {
+//					String termStr = lineSplit[j].trim().split(":", 2)[0];
+//					testTermNum = Integer.parseInt(termStr);
+//					eachNum = this.term[testTermNum][i];
+//					
+//					// 平滑系数是在这个地方设置的； 这里的100是用来将数字扩大，
+//					eachProb *= (double) (eachNum + 1) * 0.1
+//							/ (eachtermNum[i] + this.totalTerm) / 0.1
+//							* adjustmentFactor;
+//				}
+//					
+//					if (eachProb > maxProb) {
+//						maxProb = eachProb;
+//						bayesType = i;
+//					}
+
+//				}
+				
+//				if (maxProb == 0) {
+//					System.err.println("最大值为0，无法判断!");
+//				} else if (Double.isInfinite(maxProb)) {
+//					System.err.println("最大值为无穷大，无法判断!");
+//				} else {
+//					// System.out.println("文章编号："+lineNum+", 分类结果:"+bayesType +
+//					// " 最大的值:"+maxProb);
+//					System.out.println("文章编号：" + lineNum);
+//				}
 				te.setResultType(bayesType);
 				testList.add(te);
 
@@ -281,16 +311,16 @@ public class ClassificationBayes {
 	}
 
 	public static void main(String[] args) {
-		String testFileName = "D:\\doc\\RT\\04\\text_Repre\\WP_Ict_test.data";
-		String indexFileName = "D:\\doc\\RT\\04\\term_Choose\\DNC_MI_G1000_WP_Ict_train.data";
+		String testFileName = "F:\\ruantao\\doc\\rt_old\\01\\tf_testRepre\\DNC_MI_G1000_WP_Ict_test.data";
+		String indexFileName = "F:\\ruantao\\doc\\rt_old\\01\\term_Choose\\DNC_MI_G1000_WP_Ict_train.data";
 
 		File testFile = new File(testFileName);
 		File indexFile = new File(indexFileName);
 
-		File resultFile = new File(testFile.getParent(), "bayesRes.txt");
-		File evalFile = new File(testFile.getParent(), "bayesRes.res");
+		File resultFile = new File(testFile.getParent(), "bayesRes1000.txt");
+		File evalFile = new File(testFile.getParent(), "bayesRes1000.res");
 
-		ClassificationBayes cb = new ClassificationBayes();
+		ClassificationBayes_rt cb = new ClassificationBayes_rt();
 		cb.calByes(testFile, indexFile);
 		cb.outputResult(resultFile);
 
